@@ -8,6 +8,7 @@ from app.config import Config
 import socket
 from scrapy.crawler import CrawlerProcess
 # from scrapy.utils.project import get_project_settings
+# import app.celeryconfig 
 
 # 初始化日志系统 - 关键步骤
 # logging = get_logging(__name__)

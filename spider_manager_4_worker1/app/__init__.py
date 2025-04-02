@@ -12,6 +12,8 @@ celery = Celery('spider_tasks',
                 broker=Config.REDIS_URL,
                 backend=Config.REDIS_URL)
 
+celery.config_from_object('app.celeryconfig')
+
 # 定义 Prometheus 指标 - Flask 部分
 REQUEST_COUNT = Counter('flask_request_count', 'App Request Count', ['method', 'endpoint', 'status'])
 REQUEST_LATENCY = Histogram('flask_request_latency_seconds', 'Request latency', ['method', 'endpoint'])
@@ -30,6 +32,8 @@ def create_app(config_class=Config):
     # 配置Celery
     celery.conf.update(app.config)
     celery.conf.update(broker_connection_retry_on_startup=True)
+
+    # celery.conf.worker_prefetch_multiplier = 1
 
     # 添加 Prometheus 指标端点
     @app.route('/metrics')
