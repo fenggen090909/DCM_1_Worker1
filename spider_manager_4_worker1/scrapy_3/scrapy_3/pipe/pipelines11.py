@@ -54,12 +54,12 @@ class Scrapy3Pipeline:
         logging.critical("fg pipelines11 scrapy3Pipeline process_item 70")           
         question_id = item['question_id']
         title = item['title']
-        task_id_p = item['task_id_p']
-        spider_p = item['spider_p']
-        ip_p = item['ip_p']
-        docker_id_p = item['docker_id_p']
-        worker_id_p = item['worker_id_p']
-        logging.critical(f"fenggen ---, worker_id_p={worker_id_p}")
+        # task_id_p = item['task_id_p']
+        # spider_p = item['spider_p']
+        # ip_p = item['ip_p']
+        # docker_id_p = item['docker_id_p']
+        # worker_id_p = item['worker_id_p']
+        # logging.critical(f"fenggen ---, worker_id_p={worker_id_p}")
 
         with self.postgres.session_scope("questionshunt") as session:
             
@@ -68,12 +68,12 @@ class Scrapy3Pipeline:
                 question = Question(
                     question_id = question_id,
                     title = title,
-                    task_id_p = task_id_p,
-                    spider_p = spider_p,
-                    ip_p = ip_p,
-                    docker_id_p = docker_id_p,
-                    worker_id_p = worker_id_p, 
-                    time_p = datetime.datetime.now()                   
+                    # task_id_p = task_id_p,
+                    # spider_p = spider_p,
+                    # ip_p = ip_p,
+                    # docker_id_p = docker_id_p,
+                    # worker_id_p = worker_id_p, 
+                    # time_p = datetime.datetime.now()                   
                 )
                 exists = session.query(Question).filter_by(question_id=question_id).first()
                 if not exists:

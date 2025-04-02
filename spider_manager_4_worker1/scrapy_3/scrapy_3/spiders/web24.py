@@ -305,11 +305,11 @@ class Web24Spider(scrapy.Spider):
         item_postgres = Scrapy3Item_Kaggle_Kernel()
         item_postgres['kernelId'] = self.kernelId
         item_postgres['tag1'] = '1'            
-        item_postgres['task_id_c'] = self.task_id_c
-        item_postgres['spider_c'] = self.spider_c
-        item_postgres['ip_c'] = self.ip_c
-        item_postgres['docker_id_c'] = self.docker_id_c
-        item_postgres['worker_id_c'] = self.worker_id_c
+        # item_postgres['task_id_c'] = self.task_id_c
+        # item_postgres['spider_c'] = self.spider_c
+        # item_postgres['ip_c'] = self.ip_c
+        # item_postgres['docker_id_c'] = self.docker_id_c
+        # item_postgres['worker_id_c'] = self.worker_id_c
         item_postgres['pipetype'] = 'postgres'
         yield item_postgres
 

@@ -12,21 +12,20 @@ from scrapy_3.db.models import Parameters
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
+import uuid
+from kombu.serialization import dumps
+from celery.utils.serialization import pickle
+import socket
+import os
+from celery import Celery
 
 
 class Web23Spider(scrapy.Spider):
     name = "web23spider"
-    allowed_domains = ["kaggle.com"] 
-
-    # page = 1
-    # kernel_count = 0
-    # batch_size_competition = 2
-    # batch_size_kernel = 10
-    param_competitionId = None    
-
-    # url_main = "https://www.kaggle.com/api/v1/"
-    # url_main = "https://www.kaggle.com"
-    # url_api = "https://www.kaggle.com/api/i/kernels.KernelsService/ListKernels"
+    allowed_domains = ["kaggle.com"]     
+    
+    param_competitionId = None   
+    celery_app = None     
 
     custom_settings = {
         'CONCURRENT_REQUESTS': 4,
@@ -37,16 +36,16 @@ class Web23Spider(scrapy.Spider):
         }
     }
 
+    task_id_p = None
+    spider_p = None
+    ip_p = None
+    docker_id_p = None 
+    worker_id_p = None
+
     def __init__(self, competitionId=None, *args, **kwargs):
 
         logging.critical("fg web23 __init__ 0")
-        super().__init__(*args, **kwargs)  
-
-        task_id_p = None
-        spider_p = None
-        ip_p = None
-        docker_id_p = None 
-        worker_id_p = None        
+        super().__init__(*args, **kwargs)          
 
         if competitionId == None:
             logging.critical("fg web23 CloseSpider")
@@ -86,6 +85,21 @@ class Web23Spider(scrapy.Spider):
             logging.critical(f"fenggen redis conn error {e}")
         
         logging.critical("redis conn sucessful")
+
+        # 初始化Celery应用
+        self.celery_app = Celery('crawler_tasks')        
+        self.celery_app.conf.update(
+            broker_url=f'redis://{self.REDIS_HOST}:{self.REDIS_PORT}/0',
+            task_serializer='json',
+            accept_content=['json'],
+            result_serializer='json',
+            enable_utc=True,
+            task_routes={
+                'app.tasks.spider_tasks.run_crawler_task': {'queue': '1_queue'}
+            }
+        )
+        logging.critical(f"Celery app initialized with broker: redis://{self.REDIS_HOST}:{self.REDIS_PORT}/0")
+
 
     def load_params_from_db(self):
         # 数据库读取逻辑，类似前面的例子
@@ -346,6 +360,7 @@ class Web23Spider(scrapy.Spider):
             self.cookies[name_value[0]] = name_value[1]
 
         self.xsrf_token = response.css('meta[name="csrf-token"]::attr(content)').get() or self.cookies.get('XSRF-TOKEN')
+        
         if not self.xsrf_token:
             logging.critical("XSRF-TOKEN not found, request may fail")
 
@@ -425,14 +440,18 @@ class Web23Spider(scrapy.Spider):
 
             logging.critical(f"fenggen parse_id={kernelId} competitionId={competitionId}")
             detail = kernel 
-
-            self.redis_conn.lpush("2_queue", json.dumps(
-                {
-                    'kernelId': kernelId,
-                    'competitionId': competitionId,
-                    'scriptUrl': scriptUrl                              
-                }
-            ))     
+            
+            # 使用Celery API发送任务
+            self.celery_app.send_task(
+                'app.tasks.spider_tasks.run_crawler_task',
+                args=["web24spider"],
+                kwargs={
+                    "kernelId": kernelId,
+                    "competitionId": competitionId,
+                    "scriptUrl": scriptUrl
+                },
+                queue='2_queue'
+            )     
 
             item_postgres = Scrapy3Item_Kaggle_Kernel()
             item_postgres['kernelId'] = kernelId

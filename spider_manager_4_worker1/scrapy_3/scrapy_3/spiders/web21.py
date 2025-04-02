@@ -6,22 +6,25 @@ import logging
 import kaggle
 from scrapy_3.items import Scrapy3Item_Kaggle_Competition
 import json
-from scrapy_3.db.models import Parameters
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
+from scrapy_3.db.models import Parameters
+import uuid
+from kombu.serialization import dumps
+from celery.utils.serialization import pickle
+import socket
+import os
+from celery import Celery
+
 
 
 class web21Spider(scrapy.Spider):
     name = "web21spider"
     allowed_domains = ["kaggle.com"]
 
-    # page = 1    
-    # batch_size = 2
+    celery_app = None 
     
-    # url_main = "https://www.kaggle.com"
-    # url_api = "https://www.kaggle.com/api/i/competitions.CompetitionService/ListCompetitions"
-
     custom_settings = {
         'CONCURRENT_REQUESTS': 4,
         'DOWNLOAD_DELAY': 2,
@@ -31,15 +34,15 @@ class web21Spider(scrapy.Spider):
         }
     }
 
+    task_id_p = None
+    spider_p = None
+    ip_p = None
+    docker_id_p = None 
+    worker_id_p = None
+
     def __init__(self, *args, **kwargs):
         self.logger.critical("fg web21 __init__ 0")
-        super().__init__(*args, **kwargs)  
-
-        task_id_p = None
-        spider_p = None
-        ip_p = None
-        docker_id_p = None 
-        worker_id_p = None
+        super().__init__(*args, **kwargs)          
         
         for key, value in kwargs.items():
             logging.critical(f"key={key} value={value}")
@@ -57,20 +60,33 @@ class web21Spider(scrapy.Spider):
         params = self.load_params_from_db()
         for key, value in params.items():
             setattr(self, key, value) 
-            logging.critical(f"fenggen web21spider self.{key}={value}")       
-
-        # try:
-        #     self.redis_conn = redis.Redis(
-        #         host = self.REDIS_HOST,
-        #         port = self.REDIS_PORT,
-        #     )
-        # except Exception as e:
-        #     logging.critical(f"fenggen redis conn error {e}")
+            logging.critical(f"fenggen web21spider self.{key}={value}")                  
         
-        # logging.critical("redis conn sucessful")
+        try:
+            self.redis_conn = redis.Redis(
+                host = self.REDIS_HOST,
+                port = self.REDIS_PORT,
+            )
+        except Exception as e:
+            logging.critical(f"fenggen redis conn error {e}")
+        
+        logging.critical("redis conn sucessful")
 
-        # logging.critical(f"fenggen redis_host={redis_host}, redis_port={redis_port}")
-        pass
+
+        # 初始化Celery应用
+        self.celery_app = Celery('crawler_tasks')        
+        self.celery_app.conf.update(
+            broker_url=f'redis://{self.REDIS_HOST}:{self.REDIS_PORT}/0',
+            task_serializer='json',
+            accept_content=['json'],
+            result_serializer='json',
+            enable_utc=True,
+            task_routes={
+                'app.tasks.spider_tasks.run_crawler_task': {'queue': '1_queue'}
+            }
+        )
+        logging.critical(f"Celery app initialized with broker: redis://{self.REDIS_HOST}:{self.REDIS_PORT}/0")
+        
 
     def load_params_from_db(self):
         # 数据库读取逻辑，类似前面的例子
@@ -235,26 +251,12 @@ class web21Spider(scrapy.Spider):
         pass                  
 
     def start_requests(self):
-        logging.critical("fg web21 start_requests 240")
-        
-        # try:
-        #     self.page += 1
-        #     api_response = self.api_instance.competitions_list(page=self.page)
-        #     logging.critical(f"fenggen  page={self.page} api_response1={api_response}")
-        # except Exception as e:
-        #     logging.critical(f"fenggen api_response fail {e}")
+        logging.critical("fg web21 start_requests 240")                
 
         yield scrapy.Request(
             url=self.url_main,
             callback=self.get_cookies,            
-        )            
-
-        # for competition_url in api_response:
-        #     # logging.critical(f"fenggen competition_url={competition_url}")
-        #     yield scrapy.Request(
-        #         url=str(competition_url),  
-        #         callback=self.parse
-        #     )
+        )                    
 
     def get_cookies(self, response):
         logging.critical("fg web21 get_cookies 245")
@@ -269,7 +271,6 @@ class web21Spider(scrapy.Spider):
 
         # self.logger.critical(f"Cookies fetched: {cookies}")
         # self.logger.critical(f"XSRF-TOKEN: {xsrf_token}")
-
         
         payload = {                                                
             'selector': {
@@ -292,8 +293,7 @@ class web21Spider(scrapy.Spider):
         }
         headers = {
             'Content-Type': 'application/json',
-            'accept': 'application/json',
-            # 'COOKIES': cookies,
+            'accept': 'application/json',            
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
             'X-XSRF-TOKEN': self.xsrf_token,
             'accept-encoding':'gzip, deflate, br, zstd',
@@ -319,15 +319,12 @@ class web21Spider(scrapy.Spider):
             headers=headers,
             cookies=self.cookies,
             callback=self.parse,
-            # meta={'proxy': self.proxy, 'cookies': cookies, 'page': page}  # 添加代理
         )
-
 
     def parse(self, response):
         logging.critical("fg web21 parse 250")
         # url = str(response.url)
-        logging.critical(f"fenggen parse url={response.url} status={response.status}")
-        
+        logging.critical(f"fenggen parse url={response.url} status={response.status}")        
 
         data = response.json()
         # logging.critical(f"fenggen parse data={data}")
@@ -412,7 +409,6 @@ class web21Spider(scrapy.Spider):
             headers=headers,
             cookies=self.cookies,
             callback=self.parse,
-            # meta={'proxy': self.proxy, 'cookies': cookies, 'page': page}  # 添加代理
         )
 
 

@@ -15,7 +15,8 @@ task_send_sent_event = True
 # 任务默认设置
 task_default_queue = 'default'
 task_queues = {
-    '1_queue': {'exchange': '1_queue', 'routing_key': '1_queue'}
+    '1_queue': {'exchange': '1_queue', 'routing_key': '1_queue'},
+    '2_queue': {'exchange': '2_queue', 'routing_key': '2_queue'}
 }
 
 # 允许任务在出错时重试

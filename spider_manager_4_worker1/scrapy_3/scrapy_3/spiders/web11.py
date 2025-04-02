@@ -54,16 +54,12 @@ class Web11Spider(scrapy.Spider):
             if key == 'docker_id':
                 self.docker_id_p = value
             if key == 'worker_id':
-                self.worker_id_p = value
-                
-
-        # self.settings = get_project_settings()
-
-        # logging.critical(f"fenggen --page={self.page}")
+                self.worker_id_p = value                
+        
         params = self.load_params_from_db()
         for key, value in params.items():
             setattr(self, key, value) 
-        logging.critical(f"fenggen --page={self.page}")       
+            logging.critical(f"fenggen web21spider self.{key}={value}")         
 
         try:
             self.redis_conn = redis.Redis(
@@ -257,11 +253,11 @@ class Web11Spider(scrapy.Spider):
         pass                  
 
     def start_requests(self):
-        logging.critical("fg web11 start_requests 240")
-        url = self.url_main        
-        logging.critical(f"fenggen11 url={url}")
+        logging.critical("fg web11 start_requests 240")               
+        
+        
         yield scrapy.Request(
-            url = url,
+            url = self.url_main,
             callback = self.parse
         )    
 

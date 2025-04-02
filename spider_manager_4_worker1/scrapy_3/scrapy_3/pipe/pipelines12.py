@@ -56,12 +56,12 @@ class Scrapy3Pipeline:
         
         question_id = item.get('question_id') 
         tag1 = item.get('tag1') 
-        task_id_c = item.get('task_id_c')  
-        spider_c = item.get('spider_c')  
-        ip_c = item.get('ip_c')  
-        docker_id_c = item.get('docker_id_c')  
-        worker_id_c = item.get('worker_id_c')
-        logging.critical("fg pipelines12 task_id_c={task_id_c}")
+        # task_id_c = item.get('task_id_c')  
+        # spider_c = item.get('spider_c')  
+        # ip_c = item.get('ip_c')  
+        # docker_id_c = item.get('docker_id_c')  
+        # worker_id_c = item.get('worker_id_c')
+        # logging.critical("fg pipelines12 task_id_c={task_id_c}")
 
 
         if item.get('pipetype') == 'postgres':
@@ -78,12 +78,12 @@ class Scrapy3Pipeline:
                     question = session.query(Question).filter_by(question_id=question_id).first()
                     if question:
                         question.tag1 = tag1
-                        question.task_id_c = task_id_c
-                        question.spider_c = spider_c
-                        question.ip_c = ip_c
-                        question.docker_id_c = docker_id_c
-                        question.worker_id_c = worker_id_c
-                        question.time_c = datetime.datetime.now()
+                        # question.task_id_c = task_id_c
+                        # question.spider_c = spider_c
+                        # question.ip_c = ip_c
+                        # question.docker_id_c = docker_id_c
+                        # question.worker_id_c = worker_id_c
+                        # question.time_c = datetime.datetime.now()
                         
                         session.commit()               
                        

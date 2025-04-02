@@ -10,11 +10,19 @@ from scrapy_3.db.models import Parameters
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
+import uuid
+from kombu.serialization import dumps
+from celery.utils.serialization import pickle
+import socket
+import os
+from celery import Celery
 
 
 class web22Spider(scrapy.Spider):
     name = "web22spider"
     allowed_domains = ["kaggle.com"]    
+
+    celery_app = None 
 
     custom_settings = {
         'CONCURRENT_REQUESTS': 4,
@@ -24,6 +32,12 @@ class web22Spider(scrapy.Spider):
             "scrapy_3.pipe.pipelines22.Scrapy3Pipeline": 300,            
         }
     }
+
+    task_id_p = None
+    spider_p = None
+    ip_p = None
+    docker_id_p = None 
+    worker_id_p = None
 
     def __init__(self, *args, **kwargs):
         self.logger.critical("fg web22 __init__ 0")
@@ -46,6 +60,35 @@ class web22Spider(scrapy.Spider):
         for key, value in params.items():
             setattr(self, key, value) 
             logging.critical(f"fenggen web22spider self.{key}={value}") 
+
+
+        try:
+            self.redis_conn = redis.Redis(
+                host = self.REDIS_HOST,
+                port = self.REDIS_PORT,
+            )
+        except Exception as e:
+            logging.critical(f"fenggen redis conn error {e}")
+        
+        logging.critical("redis conn sucessful")   
+
+
+        # 初始化Celery应用
+        self.celery_app = Celery('crawler_tasks')        
+        self.celery_app.conf.update(
+            broker_url=f'redis://{self.REDIS_HOST}:{self.REDIS_PORT}/0',
+            task_serializer='json',
+            accept_content=['json'],
+            result_serializer='json',
+            enable_utc=True,
+            task_routes={
+                'app.tasks.spider_tasks.run_crawler_task': {'queue': '1_queue'}
+            }
+        )
+        logging.critical(f"Celery app initialized with broker: redis://{self.REDIS_HOST}:{self.REDIS_PORT}/0") 
+
+
+
 
     def load_params_from_db(self):
         # 数据库读取逻辑，类似前面的例子
@@ -274,8 +317,7 @@ class web22Spider(scrapy.Spider):
             body=json.dumps(payload),
             headers=headers,
             cookies=self.cookies,
-            callback=self.parse,
-            # meta={'proxy': self.proxy, 'cookies': cookies, 'page': page}  # 添加代理
+            callback=self.parse,           
         )
 
 
