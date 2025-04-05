@@ -7,24 +7,25 @@ import sys
 from app.config import Config
 import socket
 from scrapy.crawler import CrawlerProcess
+import socket
 # from scrapy.utils.project import get_project_settings
 # import app.celeryconfig 
 
 # 初始化日志系统 - 关键步骤
 # logging = get_logging(__name__)
 
-@celery.task(bind=True)
-def get_worker_ip(self):
-    """获取worker的ip地址"""       
-    hostname = socket.gethostname()
-    ip_address = socket.gethostbyname(hostname)
-    logging.info(f"worker hostname: {hostname}")
-    logging.info(f"worker ip address: {ip_address}")
-    return ip_address, hostname
+# @celery.task(bind=True)
+# def get_worker_ip(self):
+#     """获取worker的ip地址"""       
+#     hostname = socket.gethostname()
+#     ip_address = socket.gethostbyname(hostname)
+#     logging.info(f"worker hostname: {hostname}")
+#     logging.info(f"worker ip address: {ip_address}")
+#     return ip_address, hostname
 
 
 @celery.task(bind=True, queue='1_queue')
-def run_crawler_task(self, spider_name):
+def run_crawler_task(self, spider_name, start_page, end_page):
     """运行Scrapy爬虫的Celery任务"""
     
     # 关键步骤2: 确保 logging 设置正确的级别和处理器
@@ -32,18 +33,19 @@ def run_crawler_task(self, spider_name):
 
     # ip, hostname = get_worker_ip()
  
-    # logging.info(f"fg **** taskid={self.request.id}, args={self.request.args} kwargs={self.request.kwargs}")
-    # logging.info(f"fg **** workerid={self.request.hostname}")
-    # logging.info(f"fg **** ip={ip} hostname={hostname}")
-               
+    hostname = socket.gethostname()
+
+    logging.info(f"fg **** taskid={self.request.id}, args={self.request.args} kwargs={self.request.kwargs}")
+    logging.info(f"fg **** workerid={self.request.hostname} hostname={hostname}")
+    # logging.info(f"fg **** ip={ip} hostname={hostname}")              
    
-    print(f"======= start - 爬虫: {spider_name} =======")
+    
     logging.info(f"======= start - 爬虫: {spider_name} =======")
     
     try:
         # 记录环境信息
         original_dir = os.getcwd()
-        print(f"当前工作目录: {original_dir}")
+        
         logging.info(f"当前工作目录: {original_dir}")
         logging.info(f"PYTHONPATH: {sys.path}")
         
@@ -82,12 +84,31 @@ def run_crawler_task(self, spider_name):
 
         # 构建 scrapy 命令
         cmd = [scrapy_path, 'crawl', spider_name]
+
+        if spider_name in ['web21spider', 'web22spider', 'web11spider']:
+            cmd.extend(['-a', f'docker_id={hostname}'])
+            cmd.extend(['-a', f'start_page={start_page}'])
+            cmd.extend(['-a', f'end_page={end_page}'])
         
+
+        match spider_name:
+            case 'web11spider':
+                pass
+            case 'web21spider':
+                pass
+            case 'web22spider':
+                pass
+            case 'web23spider':
+                pass
+
+        
+        
+
         # if start_url:
         #     cmd.extend(['-a', f'start_url={start_url}'])
-        cmd.extend(['-a', f'competitionId=91844'])
-        cmd.extend(['-a', f'task_id={self.request.id}'])
-        cmd.extend(['-a', f'spider={spider_name}'])
+        # cmd.extend(['-a', f'competitionId=91844'])
+        # cmd.extend(['-a', f'task_id={self.request.id}'])
+        # cmd.extend(['-a', f'spider={spider_name}'])
         # cmd.extend(['-a', f'ip={ip}'])
         # cmd.extend(['-a', f'docker_id={hostname}'])        
         # cmd.extend(['-a', f'worker_id={self.request.hostname}'])

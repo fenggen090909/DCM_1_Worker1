@@ -25,13 +25,17 @@ class web22Spider(scrapy.Spider):
     celery_app = None 
 
     custom_settings = {
-        'CONCURRENT_REQUESTS': 4,
-        'DOWNLOAD_DELAY': 2,
+        'CONCURRENT_REQUESTS': 1,
+        'DOWNLOAD_DELAY': 8,
         'CONCURRENT_REQUESTS_PER_DOMAIN': 4,
         'ITEM_PIPELINES': {
             "scrapy_3.pipe.pipelines22.Scrapy3Pipeline": 300,            
         }
     }
+
+    page = None
+    total_count_postgre = 0
+    total_count_mongo = 0
 
     task_id_p = None
     spider_p = None
@@ -55,12 +59,17 @@ class web22Spider(scrapy.Spider):
                 self.docker_id_p = value
             if key == 'worker_id':
                 self.worker_id_p = value
+            if key == 'start_page':
+                self.start_page = int(value)
+            if key == 'end_page':
+                self.end_page = int(value)
+
+        self.page = self.start_page
 
         params = self.load_params_from_db()
         for key, value in params.items():
             setattr(self, key, value) 
             logging.critical(f"fenggen web22spider self.{key}={value}") 
-
 
         try:
             self.redis_conn = redis.Redis(
@@ -86,8 +95,6 @@ class web22Spider(scrapy.Spider):
             }
         )
         logging.critical(f"Celery app initialized with broker: redis://{self.REDIS_HOST}:{self.REDIS_PORT}/0") 
-
-
 
 
     def load_params_from_db(self):
@@ -257,7 +264,7 @@ class web22Spider(scrapy.Spider):
         logging.critical("fg web22 start_requests 240")                
 
         yield scrapy.Request(
-            url=self.url_main,
+            url=self.URL_MAIN,
             callback=self.get_cookies,            
         )            
         
@@ -312,7 +319,7 @@ class web22Spider(scrapy.Spider):
         }
         logging.critical("fenggen start request()")
         yield scrapy.Request(
-            url=self.url_api,
+            url=self.URL_API,
             method='POST',
             body=json.dumps(payload),
             headers=headers,
@@ -335,8 +342,7 @@ class web22Spider(scrapy.Spider):
             url = dataset['datasetUrl']
             detail = dataset
             # logging.critical(f"fenggen dataset id={id} url={url}")
-            # logging.critical(f"fenggen dataset detail={detail}")
-
+            # logging.critical(f"fenggen dataset detail={detail}")           
 
             item_postgres = Scrapy3Item_Kaggle_Dataset()
             item_postgres['id'] = id
@@ -345,68 +351,73 @@ class web22Spider(scrapy.Spider):
             # item_postgres['task_id_p'] = self.task_id_p
             # item_postgres['spider_p'] = self.spider_p
             # item_postgres['ip_p'] = self.ip_p
-            # item_postgres['docker_id_p'] = self.docker_id_p 
+            item_postgres['docker_id_p'] = self.docker_id_p 
             # item_postgres['worker_id_p'] = self.worker_id_p   
             # logging.critical(f"fenggen --web11 worker_id_p={self.worker_id_p} ip_p={self.ip_p} docker_id_p={self.docker_id_p}")
 
             item_postgres['pipetype'] = 'postgres'
             logging.critical(f"fenggen web22 id={id}")
             logging.critical(f"fenggen web22 url={url}")
-            yield item_postgres  
+            yield item_postgres 
+            self.total_count_postgre += 1
+            logging.critical(f"fenggen web21 total_count_postgre={self.total_count_postgre}") 
 
             item_mongo = Scrapy3Item_Kaggle_Dataset()
             item_mongo['id'] = id
             item_mongo['detail'] = detail            
             item_mongo['pipetype'] = 'mongo'
             logging.critical(f"fenggen web22 detail={detail}")            
-            yield item_mongo        
+            yield item_mongo     
+            self.total_count_mongo += 1
+            logging.critical(f"fenggen web21 total_count_mongo={self.total_count_mongo}")    
         
         self.page += 1
         logging.critical(f"fenggen web22 page={self.page}")
 
-        payload = {                                                
-            "page": self.page,
-            "group": "DATASET_SELECTION_GROUP_PUBLIC",
-            "size": "DATASET_SIZE_GROUP_ALL",
-            "fileType": "DATASET_FILE_TYPE_GROUP_ALL",
-            "license": "DATASET_LICENSE_GROUP_ALL",
-            "viewed": "DATASET_VIEWED_GROUP_UNSPECIFIED",
-            "categoryIds": [],
-            "search": "",
-            "sortBy": "DATASET_SORT_BY_HOTTEST",
-            "includeTopicalDatasets": False,
-            "minUsabilityRating": 0,
-            "feedbackIds": []
-        }
-        headers = {
-            'Content-Type': 'application/json',            
-            'accept': 'application/json',                       
-            'X-XSRF-TOKEN': self.xsrf_token,
-            'accept-encoding':'gzip, deflate, br, zstd',
-            'accept-language':'en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7',
-            'cache-control':'no-cache',   
-            'origin': 'https://www.kaggle.com',
-            'pragma':'no-cache',
-            'priority':'u=1, i',
-            'referer':'https://www.kaggle.com/datasets',
-            'sec-ch-ua':'"Chromium";v="134", "Not:A-Brand";v="24", "Google Chrome";v="134"',
-            'sec-ch-ua-mobile':'?0',
-            'sec-ch-ua-platform':"Windows",
-            'sec-fetch-dest':'empty',
-            'sec-fetch-mode':'cors',
-            'sec-fetch-site':'same-origin',
-            'x-kaggle-build-version':'f0fbb334ca7a09441642a5253344731ceb2546bb',
-        }
-        logging.critical("fenggen start1 request()")
-        yield scrapy.Request(
-            url=self.url_api,
-            method='POST',
-            body=json.dumps(payload),
-            headers=headers,
-            cookies=self.cookies,
-            callback=self.parse,
-            # meta={'proxy': self.proxy, 'cookies': cookies, 'page': page}  # 添加代理
-        )
+        if self.page <= self.end_page:
+
+            payload = {                                                
+                "page": self.page,
+                "group": "DATASET_SELECTION_GROUP_PUBLIC",
+                "size": "DATASET_SIZE_GROUP_ALL",
+                "fileType": "DATASET_FILE_TYPE_GROUP_ALL",
+                "license": "DATASET_LICENSE_GROUP_ALL",
+                "viewed": "DATASET_VIEWED_GROUP_UNSPECIFIED",
+                "categoryIds": [],
+                "search": "",
+                "sortBy": "DATASET_SORT_BY_HOTTEST",
+                "includeTopicalDatasets": False,
+                "minUsabilityRating": 0,
+                "feedbackIds": []
+            }
+            headers = {
+                'Content-Type': 'application/json',            
+                'accept': 'application/json',                       
+                'X-XSRF-TOKEN': self.xsrf_token,
+                'accept-encoding':'gzip, deflate, br, zstd',
+                'accept-language':'en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7',
+                'cache-control':'no-cache',   
+                'origin': 'https://www.kaggle.com',
+                'pragma':'no-cache',
+                'priority':'u=1, i',
+                'referer':'https://www.kaggle.com/datasets',
+                'sec-ch-ua':'"Chromium";v="134", "Not:A-Brand";v="24", "Google Chrome";v="134"',
+                'sec-ch-ua-mobile':'?0',
+                'sec-ch-ua-platform':"Windows",
+                'sec-fetch-dest':'empty',
+                'sec-fetch-mode':'cors',
+                'sec-fetch-site':'same-origin',
+                'x-kaggle-build-version':'f0fbb334ca7a09441642a5253344731ceb2546bb',
+            }
+            logging.critical("fenggen start1 request()")
+            yield scrapy.Request(
+                url=self.URL_API,
+                method='POST',
+                body=json.dumps(payload),
+                headers=headers,
+                cookies=self.cookies,
+                callback=self.parse
+            )
 
 
 

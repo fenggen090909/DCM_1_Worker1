@@ -57,7 +57,7 @@ class Scrapy3Pipeline:
         # task_id_p = item['task_id_p']
         # spider_p = item['spider_p']
         # ip_p = item['ip_p']
-        # docker_id_p = item['docker_id_p']
+        docker_id_p = item['docker_id_p']
         # worker_id_p = item['worker_id_p']
         # logging.critical(f"fenggen ---, worker_id_p={worker_id_p}")
 
@@ -71,7 +71,7 @@ class Scrapy3Pipeline:
                     # task_id_p = task_id_p,
                     # spider_p = spider_p,
                     # ip_p = ip_p,
-                    # docker_id_p = docker_id_p,
+                    docker_id_p = docker_id_p,
                     # worker_id_p = worker_id_p, 
                     # time_p = datetime.datetime.now()                   
                 )
@@ -80,6 +80,19 @@ class Scrapy3Pipeline:
                     session.add(question) 
                     logging.critical(f"add db question_id={question_id}")
                     session.commit()
+
+                    # spider.celery_app.send_task(
+                    #     'app.tasks.spider_tasks.run_crawler_task',
+                    #     args=["web12spider"],
+                    #     kwargs={
+                    #         "detail_url": detail_url,
+                    #         "question_id": question_id,
+                    #         "title": title,
+                    #         "taskid": self.task_id_p
+                    #     },
+                    #     queue='2_queue'
+                    # )
+
                 else:
                     exists.tag1 = '0'
                     session.commit()

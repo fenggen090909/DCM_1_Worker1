@@ -26,13 +26,20 @@ class Web11Spider(scrapy.Spider):
     celery_app = None
 
     custom_settings = {
-        'CONCURRENT_REQUESTS': 4,
-        'DOWNLOAD_DELAY': 2,
+        'CONCURRENT_REQUESTS': 1,
+        'DOWNLOAD_DELAY': 8,
         'CONCURRENT_REQUESTS_PER_DOMAIN': 4,
         'ITEM_PIPELINES': {
             "scrapy_3.pipe.pipelines11.Scrapy3Pipeline": 300,         
         }
     }    
+
+    total_count_postgre = 0
+    total_count_mongo = 0
+
+    start_page = None
+    end_page = None
+    page = None
 
     task_id_p = None
     spider_p = None
@@ -54,12 +61,18 @@ class Web11Spider(scrapy.Spider):
             if key == 'docker_id':
                 self.docker_id_p = value
             if key == 'worker_id':
-                self.worker_id_p = value                
+                self.worker_id_p = value   
+            if key == 'start_page':
+                self.start_page = int(value)
+            if key == 'end_page':
+                self.end_page = int(value) 
+
+        self.page = self.start_page          
         
         params = self.load_params_from_db()
         for key, value in params.items():
             setattr(self, key, value) 
-            logging.critical(f"fenggen web21spider self.{key}={value}")         
+            logging.critical(f"fenggen web11spider self.{key}={value}")         
 
         try:
             self.redis_conn = redis.Redis(
@@ -253,11 +266,10 @@ class Web11Spider(scrapy.Spider):
         pass                  
 
     def start_requests(self):
-        logging.critical("fg web11 start_requests 240")               
-        
+        logging.critical("fg web11 start_requests 240")                       
         
         yield scrapy.Request(
-            url = self.url_main,
+            url = self.URL_API,
             callback = self.parse
         )    
 
@@ -269,12 +281,16 @@ class Web11Spider(scrapy.Spider):
             return                
         
         questions = response.xpath(self.XPATH_1).getall() 
+
+        logging.critical(f"fenggen questions={questions}")
         
         for question in questions:
             logging.critical(f"fenggen questions={questions}")            
             title = question.split("/")[-1]
             question_id = question.split("/")[-2]            
-            detail_url = f"{self.domain_url}{question}"
+            detail_url = f"{self.URL_API}?{question}"
+
+            logging.critical(f"fenggen detail_url={detail_url}")
 
             # 使用Celery API发送任务
             self.celery_app.send_task(
@@ -290,26 +306,29 @@ class Web11Spider(scrapy.Spider):
             )
             
             logging.critical(f"fenggen celery task sent: url={detail_url}, question_id={question_id}, title={title}")
-            logging.critical(f"fenggen web11 taskid={self.task_id_p} spider_p={self.spider_p} ip_p={self.ip_p} docker_id_p={self.docker_id_p}")
+            # logging.critical(f"fenggen web11 taskid={self.task_id_p} spider_p={self.spider_p} ip_p={self.ip_p} docker_id_p={self.docker_id_p}")
             
             item = Scrapy3ItemStackOverflow()
             item['question_id'] = question_id
             item['title'] = title     
-            item['task_id_p'] = self.task_id_p
-            item['spider_p'] = self.spider_p
-            item['ip_p'] = self.ip_p
+            # item['task_id_p'] = self.task_id_p
+            # item['spider_p'] = self.spider_p
+            # item['ip_p'] = self.ip_p
             item['docker_id_p'] = self.docker_id_p 
-            item['worker_id_p'] = self.worker_id_p   
-            logging.critical(f"fenggen --web11 worker_id_p={self.worker_id_p} ip_p={self.ip_p} docker_id_p={self.docker_id_p}")
+            # item['worker_id_p'] = self.worker_id_p   
+            # logging.critical(f"fenggen --web11 worker_id_p={self.worker_id_p} ip_p={self.ip_p} docker_id_p={self.docker_id_p}")
             yield item      
         
         self.page += 1
-        url = f'{self.url_main}&page={self.page}'
+        url = f'{self.URL_API}?page={self.page}'
         logging.critical(f"fenggen url={url}")
-        yield scrapy.Request(
-            url = url,
-            callback = self.parse
-        )
+
+        if self.page <= self.end_page:
+
+            yield scrapy.Request(
+                url = url,
+                callback = self.parse
+            )
         
             
         

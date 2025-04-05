@@ -16,6 +16,7 @@ from celery.utils.serialization import pickle
 import socket
 import os
 from celery import Celery
+import redis
 
 
 
@@ -26,19 +27,25 @@ class web21Spider(scrapy.Spider):
     celery_app = None 
     
     custom_settings = {
-        'CONCURRENT_REQUESTS': 4,
-        'DOWNLOAD_DELAY': 2,
+        'CONCURRENT_REQUESTS': 3,
+        'DOWNLOAD_DELAY': 5,
         'CONCURRENT_REQUESTS_PER_DOMAIN': 4,
         'ITEM_PIPELINES': {
             "scrapy_3.pipe.pipelines21.Scrapy3Pipeline": 300,            
         }
     }
 
+    total_count_postgre = 0
+    total_count_mongo = 0
+
     task_id_p = None
     spider_p = None
     ip_p = None
     docker_id_p = None 
     worker_id_p = None
+    
+    start_page = None
+    end_page = None
 
     def __init__(self, *args, **kwargs):
         self.logger.critical("fg web21 __init__ 0")
@@ -56,6 +63,12 @@ class web21Spider(scrapy.Spider):
                 self.docker_id_p = value
             if key == 'worker_id':
                 self.worker_id_p = value
+            if key == 'start_page':
+                self.start_page = int(value)
+            if key == 'end_page':
+                self.end_page = int(value)
+
+        logging.critical(f"docker_id_p={self.docker_id_p}")
 
         params = self.load_params_from_db()
         for key, value in params.items():
@@ -254,12 +267,17 @@ class web21Spider(scrapy.Spider):
         logging.critical("fg web21 start_requests 240")                
 
         yield scrapy.Request(
-            url=self.url_main,
+            url=self.URL_MAIN,
             callback=self.get_cookies,            
         )                    
 
     def get_cookies(self, response):
         logging.critical("fg web21 get_cookies 245")
+
+        self.page = self.start_page
+        self.pageToken = f"{(self.page-1) * self.BATCH_SIZE}"
+        logging.critical(f"fenggen web21-- page={self.page} pageToken={self.pageToken}")
+
         self.cookies = {}
         for cookie in response.headers.getlist('Set-Cookie'):
             name_value = cookie.decode('utf-8').split(';')[0].split('=')
@@ -287,8 +305,8 @@ class web21Spider(scrapy.Spider):
                 "requireSimulations": False,
                 "requireKernels": False,
             },         
-            'pageToken': "0",
-            'pageSize': self.batch_size,
+            'pageToken': self.pageToken,
+            'pageSize': self.BATCH_SIZE,
             'readMask': "competitions,competitionUsers,totalResults,thumbnailImageUrls,headerImageUrls",
         }
         headers = {
@@ -313,7 +331,7 @@ class web21Spider(scrapy.Spider):
         }
         logging.critical("fenggen start request()")
         yield scrapy.Request(
-            url=self.url_api,
+            url=self.URL_API,
             method='POST',
             body=json.dumps(payload),
             headers=headers,
@@ -334,20 +352,33 @@ class web21Spider(scrapy.Spider):
             name = competition['competitionName']
             detail = competition
 
+            self.celery_app.send_task(
+                'app.tasks.spider_tasks.run_crawler_task',
+                args=["web23spider"],
+                kwargs={
+                    "competition_id": id,
+                    "taskid": self.task_id_p
+                },
+                queue='2_queue'
+            )
+
             item_postgres = Scrapy3Item_Kaggle_Competition()
             item_postgres['id'] = id
             item_postgres['name'] = name
             # item_postgres['task_id_p'] = self.task_id_p
             # item_postgres['spider_p'] = self.spider_p
             # item_postgres['ip_p'] = self.ip_p
-            # item_postgres['docker_id_p'] = self.docker_id_p 
+            item_postgres['docker_id_p'] = self.docker_id_p 
             # item_postgres['worker_id_p'] = self.worker_id_p   
-            # logging.critical(f"fenggen --web11 worker_id_p={self.worker_id_p} ip_p={self.ip_p} docker_id_p={self.docker_id_p}")
+            logging.critical(f"fenggen --web11 --docker_id_p={self.docker_id_p}")
 
             item_postgres['pipetype'] = 'postgres'
             logging.critical(f"fenggen web21 id={id}")
             logging.critical(f"fenggen web21 name={name}")
+            # logging.critical(f"fenggen web21 task_id_p={self.task_id_p}")
             yield item_postgres  
+            self.total_count_postgre += 1
+            logging.critical(f"fenggen web21 total_count_postgre={self.total_count_postgre}")
 
             item_mongo = Scrapy3Item_Kaggle_Competition()
             item_mongo['id'] = id
@@ -355,61 +386,68 @@ class web21Spider(scrapy.Spider):
             item_mongo['pipetype'] = 'mongo'
             logging.critical(f"fenggen web21 detail={detail}")            
             yield item_mongo
+            self.total_count_mongo += 1
+            logging.critical(f"fenggen web21 total_count_mongo={self.total_count_mongo}")
 
         
-        pageToken = f"{self.page * self.batch_size}"
-        self.page += 1
-        logging.critical(f"fenggen web21 pageToken={pageToken}")
+        logging.critical(f"fenggen web21 finished page={self.page} pageToken={self.pageToken}")
+        self.page += 1        
+        self.pageToken = f"{(int(self.page)-1) * self.BATCH_SIZE}"
+        
+        
+        if self.page <= self.end_page:    
+            logging.critical(f"fenggen web21 start page={self.page}")        
+            payload = {                                                
+                'selector': {
+                    "competitionIds": [],
+                    "listOption": "LIST_OPTION_DEFAULT",
+                    "sortOption": "SORT_OPTION_NEWEST",
+                    "hostSegmentIdFilter": 0,
+                    "searchQuery": "",
+                    "prestigeFilter": "PRESTIGE_FILTER_UNSPECIFIED",
+                    "visibilityFilter": "VISIBILITY_FILTER_UNSPECIFIED",
+                    "participationFilter": "PARTICIPATION_FILTER_UNSPECIFIED",
+                    "tagIds": [],
+                    "excludeTagIds": [],
+                    "requireSimulations": False,
+                    "requireKernels": False,
+                },         
+                'pageToken': self.pageToken,
+                'pageSize': self.BATCH_SIZE,
+                'readMask': "competitions,competitionUsers,totalResults,thumbnailImageUrls,headerImageUrls",
+            }
+            headers = {
+                'Content-Type': 'application/json',
+                'accept': 'application/json',
+                # 'COOKIES': cookies,
+                # 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
+                'X-XSRF-TOKEN': self.xsrf_token,
+                'accept-encoding':'gzip, deflate, br, zstd',
+                'accept-language':'en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7',
+                'cache-control':'no-cache',   
+                'origin': 'https://www.kaggle.com',
+                'pragma':'no-cache',
+                'priority':'u=1, i',
+                'referer':'https://www.kaggle.com/competitions',
+                'sec-ch-ua':'"Chromium";v="134", "Not:A-Brand";v="24", "Google Chrome";v="134"',
+                'sec-ch-ua-mobile':'?0',
+                'sec-ch-ua-platform':"Windows",
+                'sec-fetch-dest':'empty',
+                'sec-fetch-mode':'cors',
+                'sec-fetch-site':'same-origin',
+                'x-kaggle-build-version':'f0fbb334ca7a09441642a5253344731ceb2546bb',
+            }
+            logging.critical("fenggen start request()")
+            yield scrapy.Request(
+                url=self.URL_API,
+                method='POST',
+                body=json.dumps(payload),
+                headers=headers,
+                cookies=self.cookies,
+                callback=self.parse,
+            )
+        
 
-        payload = {                                                
-            'selector': {
-                "competitionIds": [],
-                "listOption": "LIST_OPTION_DEFAULT",
-                "sortOption": "SORT_OPTION_NEWEST",
-                "hostSegmentIdFilter": 0,
-                "searchQuery": "",
-                "prestigeFilter": "PRESTIGE_FILTER_UNSPECIFIED",
-                "visibilityFilter": "VISIBILITY_FILTER_UNSPECIFIED",
-                "participationFilter": "PARTICIPATION_FILTER_UNSPECIFIED",
-                "tagIds": [],
-                "excludeTagIds": [],
-                "requireSimulations": False,
-                "requireKernels": False,
-            },         
-            'pageToken': pageToken,
-            'pageSize': self.batch_size,
-            'readMask': "competitions,competitionUsers,totalResults,thumbnailImageUrls,headerImageUrls",
-        }
-        headers = {
-            'Content-Type': 'application/json',
-            'accept': 'application/json',
-            # 'COOKIES': cookies,
-            # 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
-            'X-XSRF-TOKEN': self.xsrf_token,
-            'accept-encoding':'gzip, deflate, br, zstd',
-            'accept-language':'en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7',
-            'cache-control':'no-cache',   
-            'origin': 'https://www.kaggle.com',
-            'pragma':'no-cache',
-            'priority':'u=1, i',
-            'referer':'https://www.kaggle.com/competitions',
-            'sec-ch-ua':'"Chromium";v="134", "Not:A-Brand";v="24", "Google Chrome";v="134"',
-            'sec-ch-ua-mobile':'?0',
-            'sec-ch-ua-platform':"Windows",
-            'sec-fetch-dest':'empty',
-            'sec-fetch-mode':'cors',
-            'sec-fetch-site':'same-origin',
-            'x-kaggle-build-version':'f0fbb334ca7a09441642a5253344731ceb2546bb',
-        }
-        logging.critical("fenggen start request()")
-        yield scrapy.Request(
-            url=self.url_api,
-            method='POST',
-            body=json.dumps(payload),
-            headers=headers,
-            cookies=self.cookies,
-            callback=self.parse,
-        )
 
 
 

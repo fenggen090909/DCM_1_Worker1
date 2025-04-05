@@ -64,9 +64,9 @@ class Scrapy3Pipeline:
             # task_id_p = item['task_id_p']
             # spider_p = item['spider_p']
             # ip_p = item['ip_p']
-            # docker_id_p = item['docker_id_p']
+            docker_id_p = item['docker_id_p']
             # worker_id_p = item['worker_id_p']
-            # logging.critical(f"fenggen ---, worker_id_p={worker_id_p}")
+            logging.critical(f"fenggen ---, docker_id_p={docker_id_p}")
 
             
             with self.postgres.session_scope("kaggle") as session:
@@ -78,7 +78,7 @@ class Scrapy3Pipeline:
                         # task_id_p = task_id_p,
                         # spider_p = spider_p,
                         # ip_p = ip_p,
-                        # docker_id_p = docker_id_p,
+                        docker_id_p = docker_id_p,
                         # worker_id_p = worker_id_p, 
                         # time_p = datetime.datetime.now()
                     )
